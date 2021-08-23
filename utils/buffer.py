@@ -7,14 +7,14 @@ class Buffer:
     input_captures = None
     output_captures = None
 
-    def __init__(self, element, input_idx=-1):
+    def __init__(self, element, input_idx=-1, continuous=False):
         self.lock = Lock()
         self.thread = Thread(target=self.update, args=())
+        self.continuous = continuous
         self.thread.daemon = True
         self.terminate = False
         self.element = element
         self.input_idx = input_idx
-
         self.next = None
         self.prev = None
 
@@ -60,6 +60,7 @@ class Buffer:
     def start(self, block: bool = False):
         print(f"Starting {self.__class__} {id(self)}")
         if not self.thread.is_alive():
+            self.element.start()
             self.thread.start()
             print(f"Started  {self.__class__} {id(self)}")
         else:
@@ -68,7 +69,9 @@ class Buffer:
     def stop(self):
         print(f"Stopping {self.__class__} {id(self)}")
         self.terminate = True
+        self.element.stop()
 
     def wait(self, timeout=3):
+        self.element.wait()
         self.thread.join(timeout=timeout)
         return self.thread.is_alive()

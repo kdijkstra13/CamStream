@@ -4,6 +4,7 @@ from capture import OpenCVCapture
 from pipelines import LinkedListPipeline
 from utils import Inlay, Buffer, SBS, Merge
 
+
 def two_models_sbs():
     stream_link = 'http://10.0.0.119:81/stream'
     dtron_model = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
