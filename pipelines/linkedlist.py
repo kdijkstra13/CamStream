@@ -26,7 +26,7 @@ class LinkedListPipeline:
         print(f"Starting {self.__class__} {id(self)}")
         for i in range(len(self.elements)):
             print(f"{self.elements[i].__class__} {id(self)}")
-            self.elements[i].start(block=block)
+            self.elements[i].start(block=False)
         self.thread.start()
         print(f"Started {self.__class__} {id(self)}")
         if block:
@@ -38,6 +38,6 @@ class LinkedListPipeline:
             self.elements[i].stop()
         self.terminate = True
 
-    def wait(self, timeout=3):
+    def wait(self, timeout=None):
         self.thread.join(timeout=timeout)
         return self.thread.is_alive()

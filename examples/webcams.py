@@ -2,69 +2,57 @@ from processors import Detectron2, MMDetect
 from viewers import FlaskServer, FlaskViewer
 from capture import OpenCVCapture
 from pipelines import LinkedListPipeline
-from utils import Inlay, Buffer, SBS, Merge
+from utils import Inlay, Buffer, SBS, Merge, Buffer
+
+C_STREAM_1 = 'http://10.0.0.124:81/stream'
+C_STREAM_2 = 'http://10.0.0.126:81/stream'
+
+
+def simple_dtron():
+    dtron_model = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+    dtron_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
+
+    stream_link = C_STREAM_1
+    pipeline = LinkedListPipeline()
+    pipeline.add(Buffer(OpenCVCapture, stream_link))
+    pipeline.add(Buffer(Detectron2(Detectron2.create_config(dtron_model, dtron_weights))))
+    pipeline.add(FlaskViewer(FlaskServer()))
+    pipeline.start(block=True)
+
+def simple_mmdet():
+    mmdet_model = "~/mmdetection/configs/faster_rcnn/faster_rcnn_r50_fpn_1x_coco.py"
+    mmdet_weights = "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_1x_coco/faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth"
+
+    stream_link = C_STREAM_1
+    pipeline = LinkedListPipeline()
+    pipeline.add(Buffer(OpenCVCapture, stream_link))
+    pipeline.add(Buffer(MMDetect(mmdet_model, mmdet_weights)))
+    pipeline.add(FlaskViewer(FlaskServer()))
+    pipeline.start(block=True)
 
 
 def two_models_sbs():
-    stream_link = 'http://10.0.0.119:81/stream'
+    stream_link = C_STREAM_1
     dtron_model = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
     dtron_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
     mmdet_model = "~/mmdetection/configs/faster_rcnn/faster_rcnn_r50_fpn_1x_coco.py"
     mmdet_weights = "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_1x_coco/faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth"
 
     pipeline = LinkedListPipeline()
-    pipeline.add(Buffer(OpenCVCapture(stream_link)))
-    pipeline.add(Buffer(Detectron2(Detectron2.create_config(dtron_model, dtron_weights, dev="cuda:0"), input_idx=-1)))
-    pipeline.add(Inlay(-1, -2, factor=4))
-    pipeline.add(Buffer(MMDetect(mmdet_model, mmdet_weights, input_idx=-3, dev="cuda:1")))
-    pipeline.add(Inlay(-1, -4, factor=4))
-    pipeline.add(SBS(-1, -3, factor=1))
+    pipeline.add(Buffer(OpenCVCapture, stream_link, use_mp=True))
+    pipeline.add(Buffer(MMDetect, mmdet_model, mmdet_weights, input_idx=-1, dev="cuda:1", use_mp=True, default_idx=-1))
+    pipeline.add(Buffer(Detectron2, Detectron2.create_config(dtron_model, dtron_weights, dev="cuda:0"), input_idx=-2, use_mp=True, default_idx=-2))
+    pipeline.add(SBS(first_idx=-1, second_idx=-2, factor=1))
+    pipeline.add(SBS(first_idx=-4, second_idx=-1, flip=True, factor=1))
     pipeline.add(FlaskViewer(FlaskServer()))
     pipeline.start(block=True)
-
-
-def two_models_three_pipelines():
-    stream_link = 'http://10.0.0.119:81/stream'
-    dtron_model = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-    dtron_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
-    mmdet_model = "~/mmdetection/configs/faster_rcnn/faster_rcnn_r50_fpn_1x_coco.py"
-    mmdet_weights = "https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r50_fpn_1x_coco/faster_rcnn_r50_fpn_1x_coco_20200130-047c8118.pth"
-
-    cap = Buffer(OpenCVCapture(stream_link))
-    server = FlaskServer(name="processing_server", port=5000)
-    server2 = FlaskServer(name="stream_server", port=5005)
-
-    mmdet = LinkedListPipeline()
-    mmdet.add(cap)
-    mmdet.add(Buffer(MMDetect(mmdet_model, mmdet_weights, input_idx=-1, dev="cuda:1")))
-    mmdet_inlay = Inlay(factor=4)
-    mmdet.add(mmdet_inlay)
-    mmdet.add(FlaskViewer(server, stream_url="/mmdet",  stream_name="MMDetection"))
-
-    dtron = LinkedListPipeline()
-    dtron.add(cap)
-    dtron.add(Buffer(Detectron2(Detectron2.create_config(dtron_model, dtron_weights, dev="cuda:0"))))
-    dtron_inlay = Inlay(factor=4)
-    dtron.add(dtron_inlay)
-    dtron.add(FlaskViewer(server, stream_url="/dtron", stream_name="Detectron"))
-
-    stream = LinkedListPipeline()
-    stream.add(Merge(mmdet_inlay, dtron_inlay, first_idx=-1, second_idx=-1))
-    stream.add(SBS(-1, -2, factor=1))
-    stream.add(FlaskViewer(server2, stream_url="/stream", stream_name="Side by Side"))
-
-    mmdet.start(block=False)
-    dtron.start(block=False)
-    stream.start(block=False)
-    server.start(block=False)
-    server2.start(block=True)
 
 
 def big_brother():
     def get_pipeline(capture_element, model_element, flask_server, url):
         p = LinkedListPipeline()
         p.add(capture_element)
-        p.add(Buffer(model_element))
+        p.add(Buffer(model_element, use_mp=True))
         inlay = Inlay(factor=4)
         p.add(inlay)
         p.add(FlaskViewer(flask_server, stream_url=url, stream_name=url))
@@ -81,8 +69,8 @@ def big_brother():
         p.add(FlaskViewer(flask_server, stream_url=url, stream_name=url))
         return p, sbs
     
-    stream1_link = 'http://10.0.0.119:81/stream'
-    stream2_link = 'http://10.0.0.133:81/stream'
+    stream1_link = C_STREAM_1
+    stream2_link = C_STREAM_2
 
     dtron1_model = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
     dtron1_weights = "COCO-Detection/faster_rcnn_R_50_FPN_3x.yaml"
@@ -94,8 +82,8 @@ def big_brother():
     mmdet2_model = "~/mmdetection/configs/mask_rcnn/mask_rcnn_x101_64x4d_fpn_1x_coco.py"
     mmdet2_weights = "https://download.openmmlab.com/mmdetection/v2.0/mask_rcnn/mask_rcnn_x101_64x4d_fpn_1x_coco/mask_rcnn_x101_64x4d_fpn_1x_coco_20200201-9352eb0d.pth"
 
-    cam1 = Buffer(OpenCVCapture(stream1_link))
-    cam2 = Buffer(OpenCVCapture(stream2_link))
+    cam1 = Buffer(OpenCVCapture, stream1_link, use_mp=True)
+    cam2 = Buffer(OpenCVCapture, stream2_link, use_mp=True)
     server_cam1 = FlaskServer(name="camera1_server", port=5000)
     server_cam2 = FlaskServer(name="camera2_server", port=5005)
     server_stream = FlaskServer(name="stream_server", port=5010)

@@ -42,5 +42,5 @@ class OpenCVCapture:
     def stop(self):
         return
 
-    def wait(self):
+    def wait(self, timeout=None):
         return False

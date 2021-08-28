@@ -60,7 +60,7 @@ class MMDetect:
     def __call__(self, captures: List[Any]) -> List[Any]:
         if self.prev:
             captures = self.prev([])
-        input_image = captures[self.input_idx]
+        input_image = captures[self.input_idx].copy()
         if input_image is not None:
             output_image = self.process_image(input_image)
             captures.append(output_image)

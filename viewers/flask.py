@@ -2,6 +2,7 @@ from flask import Flask, Response
 import cv2
 from typing import Any, List
 from threading import Thread
+import time
 
 
 class GetImage:
