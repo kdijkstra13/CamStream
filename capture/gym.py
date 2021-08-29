@@ -4,11 +4,12 @@ from typing import List, Any
 
 
 class GymCapture:
-    def __init__(self, name="CartPole-v0"):
+    def __init__(self, name="CartPole-v0", verbose=True):
         self.name = name
         self.env = gym.make(name)
         self.vdisplay = Xvfb()
         self.counter = 0
+        self.verbose = verbose
         self.prev = None
         self.next = None
 
@@ -21,7 +22,8 @@ class GymCapture:
         image = self.env.render(mode='rgb_array')
         observation, reward, done, info = self.env.step(self.env.action_space.sample())  # take a random action
         if done:
-            print(f"Reset #{self.counter} {self.name}")
+            if self.verbose:
+                print(f"Reset #{self.counter} {self.name}")
             self.counter += 1
             self.env.reset()
         return image

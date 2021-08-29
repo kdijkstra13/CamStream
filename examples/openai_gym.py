@@ -1,16 +1,17 @@
 from viewers import FlaskServer, FlaskViewer
 from capture import GymCapture
 from pipelines import LinkedListPipeline
-from utils import Buffer
+from utils import Buffer, Trigger
 
 
 def exercise():
     gym = "Hopper-v2"
-    #gym = "CartPole-v0"
+    # gym = "CartPole-v0"
 
     pipeline = LinkedListPipeline()
-    pipeline.add(Buffer(GymCapture(gym)))
+    pipeline.add(Buffer(GymCapture, gym, verbose=False))
     pipeline.add(FlaskViewer(FlaskServer()))
+    pipeline.add(Trigger())
     pipeline.start(block=True)
 
 

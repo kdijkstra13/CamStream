@@ -14,7 +14,7 @@ def update_element(input_captures_conn, output_captures_conn, element, args, kwa
     try:
         if type(element) == type:
             element = element(*args, **kwargs)
-            element.start()
+        element.start()
         while not terminate.value:
             input_captures = input_captures_conn.recv()
             output_captures = element(input_captures)
