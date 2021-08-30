@@ -5,13 +5,12 @@ from utils import Buffer, Trigger
 
 
 def exercise():
-    gym = "Hopper-v2"
-    # gym = "CartPole-v0"
+    # gym = "Hopper-v2"
+    gym = "CartPole-v0"
 
     pipeline = LinkedListPipeline()
     pipeline.add(Buffer(GymCapture, gym, verbose=False))
     pipeline.add(FlaskViewer(FlaskServer()))
-    pipeline.add(Trigger())
     pipeline.start(block=True)
 
 

@@ -33,5 +33,5 @@ class Merge:
     def stop(self):
         return
 
-    def wait(self, timeout=3):
+    def wait(self, timeout=None):
         return False
