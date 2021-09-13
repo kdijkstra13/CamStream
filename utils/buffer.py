@@ -34,7 +34,7 @@ class Buffer:
             instance cannot be transferred to another process by pickling in the case of spawning a new process.
         :param args: Arguments for the element-instance construction.
         :param default_idx: The input index to use when the wrapped element has no captures ready.
-        :param use_mp: Use multiprocessing is this is True
+        :param use_mp: Use multiprocessing if this is True
         :param kwargs: Keyword arguments for the element-instance construction.
         """
         self.terminate = Value(ctypes.c_bool)
@@ -44,7 +44,8 @@ class Buffer:
         if use_mp:
             # Create a process that creates the element
             self.element = None
-            self.process = Process(target=update_element, args=(input_captures_child, output_captures_child, element, args, kwargs, self.terminate))
+            self.process = Process(target=update_element, args=(
+            input_captures_child, output_captures_child, element, args, kwargs, self.terminate))
         else:
             # Create the element or assign it
             self.element = element(*args, **kwargs) if type(element) == type else element

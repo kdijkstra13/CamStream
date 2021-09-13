@@ -9,7 +9,7 @@ def exercise():
     gym = "CartPole-v0"
 
     pipeline = LinkedListPipeline()
-    pipeline.add(Buffer(GymCapture, gym, verbose=False))
+    pipeline.add(Buffer(GymCapture, gym, verbose=False, threaded=False, speed=15, report_freq=2))
     pipeline.add(FlaskViewer(FlaskServer()))
     pipeline.start(block=True)
 
