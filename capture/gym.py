@@ -1,15 +1,17 @@
 import time
+from collections import deque
 
 from xvfbwrapper import Xvfb
 import gym
 from typing import List, Any
 from threading import Thread, Lock
 import timeit
-# based on: https://github.com/deepakkavoor/cartpole-rl/blob/master/cartpole-q_learning.py
-
+import numpy as np
+import math
+import random
 
 class GymCapture:
-    def __init__(self, name="CartPole-v0", verbose=True, report_freq=2, threaded=True, speed=0):
+    def __init__(self, name="CartPole-v0", verbose=False, report_freq=0, threaded=True, speed=0):
         """
         A generic OpenAI gym object
 
@@ -26,13 +28,13 @@ class GymCapture:
         self.name = name
         self.env = gym.make(name)
         self.vdisplay = Xvfb()
-        self.counter = 0
+        self.episode = 0
         self.verbose = verbose
         self.terminate = False
         self.prev = None
         self.next = None
         self.begin = timeit.default_timer()
-        self.iters = 0
+        self.iter = 0
         self.threaded = threaded
         self.speed = speed
         self.start_loop = timeit.default_timer()
@@ -45,29 +47,34 @@ class GymCapture:
             captures.append(image)
         return captures
 
-    def step(self):
-        # take a random action by default
-        observation, reward, done, info = self.env.step(self.env.action_space.sample())
+    def step(self, episode, iter, restart=False):
+        if restart:
+            observation = self.reset_env()
+            done = False
+        else:
+            observation, reward, done, info = self.env.step(self.env.action_space.sample())
         return done
 
-    def update_one(self):
-        # run one iter
-        if self.step():
-            if self.verbose:
-                print(f"Reset #{self.counter} {self.name}")
-            self.counter += 1
-            with self.lock:
-                self.env.reset()
+    def reset_env(self):
+        with self.lock:
+            return self.env.reset()
 
-        self.iters += 1
+    def update_one(self):
+        done = self.step(self.episode, self.iter, restart=self.iter == 0)
+        if done:
+            if self.verbose:
+                print(f"Done @ episode #{self.episode} and iter #{self.iter} with {self.name}")
+            self.begin = timeit.default_timer()
+            self.iter = 0
+            self.episode += 1
+        else:
+            self.iter += 1
 
         # Calculate iters/sec
         seconds = timeit.default_timer() - self.begin
 
         if seconds > self.report_freq != 0:
-            print(f"Gym @ {self.iters / seconds:.1f} iters/s")
-            self.begin = timeit.default_timer()
-            self.iters = 0
+            print(f"Gym @ {self.iter / seconds:.1f} iters/s")
 
         # force iters/sec?
         if self.speed > 0:
@@ -82,7 +89,7 @@ class GymCapture:
     def update(self):
         while not self.terminate:
             self.update_one()
-            time.sleep(0)
+
         print(f"Stopped {self.__class__} {id(self)}")
 
     def start(self, block: bool = False):
@@ -106,3 +113,96 @@ class GymCapture:
 
     def __del__(self):
         self.stop()
+
+
+# based on: https://github.com/deepakkavoor/cartpole-rl/blob/master/cartpole-q_learning.py
+class QLearning(GymCapture):
+    def __init__(self, name=None):
+        GymCapture.__init__(self, name=name, threaded=False)
+
+        # Hyper parameter settings
+        self.buckets = (1, 1, 6, 3)  # (position, velocity, angle, angular velocity)
+        self.min_epsilon = 0.1
+        self.min_alpha = 0.1
+        self.gamma = 0.99
+
+        # The q table
+        self.q_table = np.zeros(self.buckets + (self.env.action_space.n,))  # action space (left, right)
+
+        # State information
+        self.episode = 0
+        self.curr_state = None
+
+        # Score and reward information
+        self.episode_reward = 0
+        self.scores = deque(maxlen=100)
+
+    def select_action(self, state, epsilon):
+        # implement the epsilon-greedy approach
+        if random.random() <= epsilon:
+            return self.env.action_space.sample()  # sample a random action with probability epsilon
+        else:
+            return np.argmax(self.q_table[state])  # choose greedy action with highest Q-value
+
+    def get_epsilon(self, episode_number):
+        # choose decaying epsilon in range [min_epsilon, 1]
+        return max(self.min_epsilon, min(1., 1 - math.log10((episode_number + 1) / 25)))
+
+    def get_alpha(self, episode_number):
+        # choose decaying alpha in range [min_alpha, 1]
+        return max(self.min_alpha, min(1., 1 - math.log10((episode_number + 1) / 25)))
+
+    def update_table(self, old_state, action, reward, new_state, alpha):
+        # updates the state-action pairs based on future reward
+        new_state_q_value = np.max(self.q_table[new_state])
+        self.q_table[old_state][action] += alpha * (reward + self.gamma * new_state_q_value - self.q_table[old_state][action])
+
+    def discretize_state(self, state):
+        upper_bounds = self.env.observation_space.high  # upper and lower bounds of state dimensions
+        lower_bounds = self.env.observation_space.low
+
+        upper_bounds[1] = 0.5
+        upper_bounds[3] = math.radians(50)  # setting manual bounds for velocity and angular velocity
+        lower_bounds[1] = -0.5
+        lower_bounds[3] = -math.radians(50)
+
+        # discretizing each input dimension into one of the buckets
+        width = [upper_bounds[i] - lower_bounds[i] for i in range(len(state))]
+        ratios = [(state[i] - lower_bounds[i]) / width[i] for i in range(len(state))]
+        bucket_indices = [int(round(ratios[i] * (self.buckets[i] - 1))) for i in range(len(state))]
+
+        # making the range of indices to [0, bucket_length]
+        bucket_indices = [max(0, min(bucket_indices[i], self.buckets[i] - 1)) for i in range(len(state))]
+
+        return tuple(bucket_indices)
+
+    def step(self, episode, iter, restart=False) -> bool:
+        # Get the new hyper parameters
+        alpha = self.get_alpha(self.episode)
+        epsilon = self.get_epsilon(self.episode)
+
+        # Check for restart conditions
+        if restart:
+            if episode + iter > 0:
+                self.scores.append(self.episode_reward)
+            if len(self.scores) > 0:
+                print(f"Cumulative episode {episode} reward {self.episode_reward}, Average of last {len(self.scores)} iters = {sum(self.scores) / len(self.scores):.2f}")
+            self.episode_reward = 0
+
+            # Get state for the newly initialized environment.
+            obs = self.reset_env()
+            self.curr_state = self.discretize_state(obs)
+
+        # Select the next action
+        action = self.select_action(self.curr_state, epsilon)
+
+        # Progress the environment
+        obs, reward, done, info = self.env.step(action)
+        new_state = self.discretize_state(obs)
+
+        # Update the q-table, states and reward
+        self.update_table(self.curr_state, action, reward, new_state, alpha)
+        self.curr_state = new_state
+        self.episode_reward += reward
+
+        return done

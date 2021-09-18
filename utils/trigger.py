@@ -33,8 +33,9 @@ class Trigger:
             start = timeit.default_timer()
             self.output_captures = self.prev([])
             end = timeit.default_timer()
-            sleep = max(0., (1. / self.triggers_per_second) - (end - start))
-            time.sleep(sleep)
+            if self.triggers_per_second > 0:
+                sleep = max(0., (1. / self.triggers_per_second) - (end - start))
+                time.sleep(sleep)
             iters += 1
             seconds = timeit.default_timer() - begin
             if seconds > self.report_freq != 0:
