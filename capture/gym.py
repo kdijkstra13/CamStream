@@ -1,9 +1,11 @@
+import os
+import pickle
 import time
 from collections import deque
 
 from xvfbwrapper import Xvfb
 import gym
-from typing import List, Any
+from typing import List, Any, Callable, Optional
 from threading import Thread, Lock
 import timeit
 import numpy as np
@@ -117,8 +119,8 @@ class GymCapture:
 
 # based on: https://github.com/deepakkavoor/cartpole-rl/blob/master/cartpole-q_learning.py
 class QLearning(GymCapture):
-    def __init__(self, name=None):
-        GymCapture.__init__(self, name=name, threaded=False)
+    def __init__(self, name=None, threaded=False, save_func: Optional[Callable[['QLearning'], bool]] = None, verbose=True):
+        GymCapture.__init__(self, name=name, threaded=threaded, verbose=verbose)
 
         # Hyper parameter settings
         self.buckets = (1, 1, 6, 3)  # (position, velocity, angle, angular velocity)
@@ -136,6 +138,12 @@ class QLearning(GymCapture):
         # Score and reward information
         self.episode_reward = 0
         self.scores = deque(maxlen=100)
+
+        self.save_func = save_func
+        self.verbose = verbose
+
+    def get_avg_score(self):
+        return sum(self.scores) / len(self.scores)
 
     def select_action(self, state, epsilon):
         # implement the epsilon-greedy approach
@@ -186,8 +194,10 @@ class QLearning(GymCapture):
             if episode + iter > 0:
                 self.scores.append(self.episode_reward)
             if len(self.scores) > 0:
-                print(f"Cumulative episode {episode} reward {self.episode_reward}, Average of last {len(self.scores)} iters = {sum(self.scores) / len(self.scores):.2f}")
-            self.episode_reward = 0
+                if self.verbose:
+                    print(f"Cumulative episode {episode} reward {self.episode_reward}, Average of last {len(self.scores)} iters = {sum(self.scores) / len(self.scores):.2f}")
+                self.save_func(self) if self.save_func else None
+                self.episode_reward = 0
 
             # Get state for the newly initialized environment.
             obs = self.reset_env()
@@ -206,3 +216,44 @@ class QLearning(GymCapture):
         self.episode_reward += reward
 
         return done
+
+
+class QSaver:
+    def __init__(self, base_filename: str, append_episode=True, save_freq=10, verbose=True):
+        self.base_filename = base_filename
+        self.append_episode = append_episode
+        self.save_freq = save_freq
+        self.verbose = verbose
+        self.last_score = 0
+        os.makedirs(os.path.dirname(base_filename), exist_ok=True)
+
+    def save(self, obj: QLearning) -> Optional[str]:
+        if obj.get_avg_score() <= self.last_score:
+            return
+        self.last_score = obj.get_avg_score()
+
+        d = {'episode': obj.episode,
+             'score': obj.get_avg_score(),
+             'q_table': obj.q_table}
+
+        if self.append_episode:
+            filename = f"{self.base_filename}_{obj.episode}.txt"
+        else:
+            filename = f"{self.base_filename}.txt"
+
+        with open(filename, "wb") as f:
+            pickle.dump(d, f)
+        if self.verbose:
+            print(f"Saved to {filename} with score {obj.get_avg_score():.3f}")
+        return filename
+
+    def __call__(self, obj: QLearning) -> Optional[str]:
+        if obj.episode % self.save_freq == 0 and obj.episode != 0:
+            filename = self.save(obj)
+            return filename
+
+# class QLoader:
+#     def __init__(self, base_filename: str, append_episode=True, verbose=True):
+#         self.base_filename: str
+
+
