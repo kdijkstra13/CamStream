@@ -24,7 +24,7 @@ def update_element(input_captures_conn, output_captures_conn, element, args, kwa
 
 
 class Buffer:
-    def __init__(self, element, *args, default_idx=-1, use_mp=True, **kwargs):
+    def __init__(self, element, *args, default_idx=[-1], use_mp=True, **kwargs):
         """
         This class wraps an element and creates a non-blocking __call__() method. The element is either executed using
             threading if use_mp is False and with multiprocessing is otherwise.
@@ -33,7 +33,8 @@ class Buffer:
             that will be constructed with *args and **kwargs. Note: instantiation is useful when the state of a class
             instance cannot be transferred to another process by pickling in the case of spawning a new process.
         :param args: Arguments for the element-instance construction.
-        :param default_idx: The input index to use when the wrapped element has no captures ready.
+        :param default_idx: A list of input indices to use when the wrapped element has no captures ready.
+            or a strings to put strings constants in the captures.
         :param use_mp: Use multiprocessing is this is True
         :param kwargs: Keyword arguments for the element-instance construction.
         """
@@ -51,7 +52,7 @@ class Buffer:
             self.process = None
         self.thread = Thread(target=self.update, args=())
         self.thread.daemon = True
-
+        self.updated = False
         self.default_idx = default_idx
         self.input_captures = None
         self.output_captures = None
@@ -75,7 +76,12 @@ class Buffer:
         if self.output_captures is None:
             # If there is no output return the input instead
             output_captures = captures.copy()
-            output_captures.append(output_captures[self.default_idx].copy())
+            for idx in self.default_idx:
+                if isinstance(idx, str):
+                    output_captures.append(idx)
+                else:
+                    output_captures.append(output_captures[idx].copy())
+
             return output_captures
         else:
             # Intended output
@@ -83,6 +89,7 @@ class Buffer:
             output_captures = captures.copy()
             for i in range(num_caps, len(self.output_captures)):
                 output_captures.append(self.output_captures[i])
+            self.updated = True
             return output_captures
 
     def update(self):

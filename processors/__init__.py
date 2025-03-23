@@ -7,3 +7,8 @@ try:
     from .mmdetect import *
 except ImportError as e:
     print("Warning:", e)
+
+try:
+    from .llava import *
+except ImportError as e:
+    print("Warning:", e)
